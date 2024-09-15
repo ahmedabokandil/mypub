@@ -1,11 +1,10 @@
 ---
-collections:
-  - 'namespace.collection'
-  # for common collections:
-  - 'community.general'
-  - 'ansible.posix'
-  - 'community.mysql'
-  - 'community.crypto'
-
 roles:
-  - src: 'namespace.role'
+  # Define your roles here if needed
+  # - src: geerlingguy.mysql
+  # - src: geerlingguy.postgresql
+
+collections:
+  - name: community.routeros
+    src: https://github.com/ansible-collections/community.routeros.git
+    version: "1.0.0"  # Specify the version or use the latest available
