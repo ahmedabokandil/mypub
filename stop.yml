@@ -6,4 +6,4 @@
     - name: Stop the Docker container "watchtower"
       community.docker.docker_container:
         name: watchtower
-        state: stopped
+        state: started
