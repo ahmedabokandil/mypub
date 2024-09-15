@@ -3,14 +3,14 @@
   hosts: mikrotik
   gather_facts: no
   tasks:
-    - name: Update MikroTik package list
+    - name: Download MikroTik package update
       community.routeros.routeros_command:
         host: "{{ ansible_host }}"
         username: "{{ ansible_user }}"
         password: "{{ ansible_password }}"
         commands:
           - /system/package/update/download
-      
+
     - name: Install MikroTik packages
       community.routeros.routeros_command:
         host: "{{ ansible_host }}"
