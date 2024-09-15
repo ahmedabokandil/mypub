@@ -4,13 +4,11 @@
   gather_facts: no
   tasks:
     - name: Check for OS updates
-      ansible.builtin.shell: |
-        /system package update download
+      ansible.builtin.command: /system package update download
       register: update_download
 
     - name: Install OS updates
-      ansible.builtin.shell: |
-        /system package update install
+      ansible.builtin.command: /system package update install
       when: update_download.rc == 0
       register: update_install
 
