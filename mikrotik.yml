@@ -1,24 +1,19 @@
-- name: Check for MikroTik Updates
+---
+- name: Check and Update MikroTik Router OS
   hosts: mikrotik
   gather_facts: no
-
   tasks:
-    - name: Connect to MikroTik device
-      mikrotik:
-        host: "{{ inventory_hostname }}"
-        username: "{{ mikrotik_username }}"
-        password: "{{ mikrotik_password }}"
+    - name: Check for OS updates
+      ansible.builtin.shell: |
+        /system package update download
+      register: update_download
 
-    - name: Check for updates
-      mikrotik:
-        command: "system package update-check"
-        register: update_check_result
+    - name: Install OS updates
+      ansible.builtin.shell: |
+        /system package update install
+      when: update_download.rc == 0
+      register: update_install
 
-    - name: Check if updates are available
+    - name: Display update results
       debug:
-        msg: "Updates are available: {{ update_check_result.stdout.split('=')[1] }}"
-
-    - name: Install updates (optional)
-      mikrotik:
-        command: "system package update"
-      when: update_check_result.stdout.split('=')[1] == "true"
+        var: update_install.stdout_lines
