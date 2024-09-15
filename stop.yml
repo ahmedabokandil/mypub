@@ -1,0 +1,9 @@
+---
+- name: Stop Docker container "watchtower"
+  hosts: docker
+  become: yes
+  tasks:
+    - name: Stop the Docker container "watchtower"
+      community.docker.docker_container:
+        name: watchtower
+        state: stopped
