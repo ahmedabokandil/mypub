@@ -1,20 +1,22 @@
 ---
-- name: Update MikroTik Packages
+- name: Update MikroTik RouterOS from Internet
   hosts: mikrotik
   gather_facts: no
   tasks:
-    - name: Download MikroTik package update
-      community.network.routeros_command:
-        host: "{{ ansible_host }}"
-        username: "{{ ansible_user }}"
-        password: "{{ ansible_password }}"
+    - name: Check for RouterOS updates
+      community.routeros.routeros_command:
         commands:
-          - /system/package/update/download
+          - /system package update check-for-updates
+      register: update_check_result
 
-    - name: Install MikroTik packages
-      community.network.routeros_command:
-        host: "{{ ansible_host }}"
-        username: "{{ ansible_user }}"
-        password: "{{ ansible_password }}"
+    - name: Download and install RouterOS update if available
+      community.routeros.routeros_command:
         commands:
-          - /system/package/update/install
+          - /system package update install
+      when: "'No updates available' not in update_check_result.stdout"
+
+    - name: Reboot router to apply update
+      community.routeros.routeros_command:
+        commands:
+          - /system reboot
+      when: "'No updates available' not in update_check_result.stdout"
