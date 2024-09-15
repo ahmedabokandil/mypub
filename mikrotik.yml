@@ -1,7 +1,24 @@
----
-- name: Update MikroTik RouterOS from Internet
+- name: Check for MikroTik Updates
   hosts: mikrotik
-  community.network.routeros_command:
-    commands: /system resource print
-  register: routeros_resources
-  when: ansible_network_os == 'community.network.routeros'
+  gather_facts: no
+
+  tasks:
+    - name: Connect to MikroTik device
+      mikrotik:
+        host: "{{ inventory_hostname }}"
+        username: "{{ mikrotik_username }}"
+        password: "{{ mikrotik_password }}"
+
+    - name: Check for updates
+      mikrotik:
+        command: "system package update-check"
+        register: update_check_result
+
+    - name: Check if updates are available
+      debug:
+        msg: "Updates are available: {{ update_check_result.stdout.split('=')[1] }}"
+
+    - name: Install updates (optional)
+      mikrotik:
+        command: "system package update"
+      when: update_check_result.stdout.split('=')[1] == "true"
