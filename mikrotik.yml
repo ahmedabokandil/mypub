@@ -11,18 +11,20 @@
         /system package update check-for-updates
       register: update_status
       ignore_errors: yes
+      changed_when: false  # Ensure it runs and registers output even if there's no change
 
     - name: Display update status
       debug:
-        var: update_status.stdout_lines
+        var: update_status.stdout  # Change from stdout_lines to stdout for raw output
 
     - name: Download the new update if available
       raw: |
         /system package update download
-      when: "'New version' in update_status.stdout_lines"
+      when: "'New version' in update_status.stdout"
+      ignore_errors: yes
 
     - name: Reboot to apply the update if needed
       raw: |
         /system reboot
-      when: "'New version' in update_status.stdout_lines"
+      when: "'New version' in update_status.stdout"
       ignore_errors: yes
