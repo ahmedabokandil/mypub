@@ -1,30 +1,32 @@
 ---
-- name: Check and update MikroTik RouterOS using SSH
+- name: Check and update MikroTik RouterOS using routeros_command
   hosts: mikrotik
   gather_facts: no
   vars:
+    ansible_network_os: "community.network.routeros"
     routeros_user: "admin"
     routeros_password: "awt_aom12"
+
   tasks:
-    - name: Check for available updates with increased SSH timeout
-      raw: |
-        /system package update check-for-updates
+    - name: Check for available updates on MikroTik
+      community.network.routeros_command:
+        commands:
+          - /system package update check-for-updates
       register: update_status
-      ignore_errors: yes
-      changed_when: false
-      retries: 3
-      delay: 10
 
     - name: Display update status
       debug:
         var: update_status.stdout
 
-    - name: Download the new update if available
-      raw: |
-        /system package update download
+    - name: Download the update if a new version is available
+      community.network.routeros_command:
+        commands:
+          - /system package update download
       when: "'New version' in update_status.stdout"
 
-    - name: Reboot to apply the update if needed
-      raw: |
-        /system reboot
+    - name: Reboot the router if a new version is downloaded
+      community.network.routeros_command:
+        commands:
+          - /system reboot
       when: "'New version' in update_status.stdout"
+      ignore_errors: yes
