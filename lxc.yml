@@ -68,9 +68,7 @@
       prompt: "Enter the public key to add to /root/.ssh/authorized_keys"
       private: no
 
-    - name: "install_docker"
-      prompt: "Do you want to install Docker? (yes/no)"
-      private: no
+
 
   tasks:
     - name: Create LXC container on Proxmox
@@ -102,60 +100,4 @@
         node: "{{ proxmox_node }}"
         vmid: "{{ vmid }}"
         state: started
-
-    # Step 1: Allow root login via SSH
-    - name: Allow root to login via SSH
-      ansible.builtin.lineinfile:
-        path: /etc/ssh/sshd_config
-        regexp: '^#?PermitRootLogin'
-        line: 'PermitRootLogin yes'
-      become: yes
-      delegate_to: "{{ ip_address }}"
-    
-    - name: Restart SSH service to apply changes
-      ansible.builtin.systemd:
-        name: ssh
-        state: restarted
-      become: yes
-      delegate_to: "{{ ip_address }}"
-
-    # Step 2: Update the operating system
-    - name: Update the OS (Debian/Ubuntu)
-      ansible.builtin.apt:
-        upgrade: dist
-        update_cache: yes
-      become: yes
-      delegate_to: "{{ ip_address }}"
-
-    # Step 3: Prompt for Docker installation
-    - name: Install Docker if chosen
-      ansible.builtin.include_tasks: install_docker.yml
-      when: install_docker == "yes"
-
-    # Step 4: OS Hardening (basic steps)
-    - name: Install UFW firewall
-      ansible.builtin.apt:
-        name: ufw
-        state: present
-      become: yes
-      delegate_to: "{{ ip_address }}"
-
-    - name: Allow SSH through firewall
-      ansible.builtin.ufw:
-        rule: allow
-        port: 22
-      become: yes
-      delegate_to: "{{ ip_address }}"
-
-    - name: Enable UFW firewall
-      ansible.builtin.ufw:
-        state: enabled
-      become: yes
-      delegate_to: "{{ ip_address }}"
-
-    - name: Enable automatic security updates
-      ansible.builtin.apt:
-        name: unattended-upgrades
-        state: present
-      become: yes
-      delegate_to: "{{ ip_address }}"
+  
