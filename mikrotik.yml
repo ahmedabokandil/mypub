@@ -1,28 +1,28 @@
 ---
-- name: Check and update MikroTik RouterOS
+- name: Check and update MikroTik RouterOS using SSH
   hosts: mikrotik
   gather_facts: no
+  vars:
+    routeros_user: "admin"
+    routeros_password: "awt_aom12"
   tasks:
     - name: Check for available updates
-      community.routeros.command:
-        commands:
-          - /system package update check-for-updates
-      register: check_updates
+      raw: |
+        /system package update check-for-updates
+      register: update_status
+      ignore_errors: yes
 
     - name: Display update status
       debug:
-        msg: "{{ check_updates.stdout_lines }}"
+        var: update_status.stdout_lines
 
     - name: Download the new update if available
-      community.routeros.command:
-        commands:
-          - /system package update download
-      when: "'New version' in check_updates.stdout_lines"
+      raw: |
+        /system package update download
+      when: "'New version' in update_status.stdout_lines"
 
-    - name: Reboot to apply the update
-      community.routeros.command:
-        commands:
-          - /system reboot
-      when: "'New version' in check_updates.stdout_lines"
+    - name: Reboot to apply the update if needed
+      raw: |
+        /system reboot
+      when: "'New version' in update_status.stdout_lines"
       ignore_errors: yes
-
