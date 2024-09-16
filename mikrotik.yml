@@ -2,16 +2,11 @@
 - name: Check and update MikroTik RouterOS
   hosts: mikrotik
   gather_facts: no
-  vars:
-    routeros_user: "admin"
-    routeros_password: "your_password_here"
   tasks:
     - name: Check for available updates
       community.routeros.command:
         commands:
           - /system package update check-for-updates
-        username: "{{ routeros_user }}"
-        password: "{{ routeros_password }}"
       register: check_updates
 
     - name: Display update status
@@ -22,16 +17,12 @@
       community.routeros.command:
         commands:
           - /system package update download
-        username: "{{ routeros_user }}"
-        password: "{{ routeros_password }}"
       when: "'New version' in check_updates.stdout_lines"
 
     - name: Reboot to apply the update
       community.routeros.command:
         commands:
           - /system reboot
-        username: "{{ routeros_user }}"
-        password: "{{ routeros_password }}"
       when: "'New version' in check_updates.stdout_lines"
       ignore_errors: yes
 
