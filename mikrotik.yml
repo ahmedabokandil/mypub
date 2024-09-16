@@ -6,25 +6,25 @@
     routeros_user: "admin"
     routeros_password: "awt_aom12"
   tasks:
-    - name: Check for available updates
+    - name: Check for available updates with increased SSH timeout
       raw: |
         /system package update check-for-updates
       register: update_status
       ignore_errors: yes
-      changed_when: false  # Ensure it runs and registers output even if there's no change
+      changed_when: false
+      retries: 3
+      delay: 10
 
     - name: Display update status
       debug:
-        var: update_status.stdout  # Change from stdout_lines to stdout for raw output
+        var: update_status.stdout
 
     - name: Download the new update if available
       raw: |
         /system package update download
       when: "'New version' in update_status.stdout"
-      ignore_errors: yes
 
     - name: Reboot to apply the update if needed
       raw: |
         /system reboot
       when: "'New version' in update_status.stdout"
-      ignore_errors: yes
