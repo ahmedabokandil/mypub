@@ -6,7 +6,7 @@
     - name: Run a command
       community.routeros.command:
         commands:
-          - /system resource print
+          - system resource print
       register: system_resource_print
     - name: Print its output
       ansible.builtin.debug:
