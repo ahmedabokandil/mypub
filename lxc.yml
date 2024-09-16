@@ -1,0 +1,204 @@
+---
+- name: Create LXC container on Proxmox and apply additional configurations
+  hosts: localhost
+  gather_facts: no
+
+  vars_prompt:
+    - name: "api_host"
+      prompt: "Enter your Proxmox API host (IP or domain)"
+      private: no
+
+    - name: "api_user"
+      prompt: "Enter your Proxmox API username (e.g., root@pam)"
+      private: no
+
+    - name: "api_password"
+      prompt: "Enter your Proxmox API password"
+      private: yes
+
+    - name: "proxmox_node"
+      prompt: "Enter the name of the Proxmox node"
+      private: no
+
+    - name: "vmid"
+      prompt: "Enter the VMID for the new container (must be unique)"
+      private: no
+
+    - name: "container_hostname"
+      prompt: "Enter the hostname for the container"
+      private: no
+
+    - name: "root_password"
+      prompt: "Enter the root password for the container"
+      private: yes
+
+    - name: "cpu_cores"
+      prompt: "Enter the number of CPU cores for the container"
+      private: no
+
+    - name: "memory_mb"
+      prompt: "Enter the amount of memory (in MB) for the container"
+      private: no
+
+    - name: "disk_size_gb"
+      prompt: "Enter the root disk size (in GB) for the container"
+      private: no
+
+    - name: "ip_address"
+      prompt: "Enter the static IP address for the container (e.g., 192.168.1.101/24)"
+      private: no
+
+    - name: "gateway"
+      prompt: "Enter the gateway IP for the container"
+      private: no
+
+    - name: "dns"
+      prompt: "Enter the DNS server IP for the container"
+      private: no
+
+    - name: "storage_pool"
+      prompt: "Enter the Proxmox storage pool (e.g., local-lvm)"
+      private: no
+
+    - name: "os_template"
+      prompt: "Enter the OS template (e.g., local:vztmpl/debian-11-standard_11.7-1_amd64.tar.zst)"
+      private: no
+
+    - name: "pubkey"
+      prompt: "Enter the public key to add to /root/.ssh/authorized_keys"
+      private: no
+
+    - name: "install_docker"
+      prompt: "Do you want to install Docker? (yes/no)"
+      private: no
+
+  tasks:
+    - name: Create LXC container on Proxmox
+      community.general.proxmox:
+        api_host: "{{ api_host }}"
+        api_user: "{{ api_user }}"
+        api_password: "{{ api_password }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ vmid }}"
+        state: present
+        password: "{{ root_password }}"
+        hostname: "{{ container_hostname }}"
+        storage: "{{ storage_pool }}"
+        ostemplate: "{{ os_template }}"
+        cores: "{{ cpu_cores }}"
+        memory: "{{ memory_mb }}"
+        disk: "{{ storage_pool }}:{{ disk_size_gb }}"
+        netif:
+          net0: "name=eth0,bridge=vmbr0,ip={{ ip_address }},gw={{ gateway }}"
+        pubkey: "{{ pubkey }}"
+        nameserver: "{{ dns }}"
+        onboot: true
+
+    - name: Start the LXC container
+      community.general.proxmox:
+        api_host: "{{ api_host }}"
+        api_user: "{{ api_user }}"
+        api_password: "{{ api_password }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ vmid }}"
+        state: started
+
+    # Step 1: Allow root login via SSH
+    - name: Allow root to login via SSH
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitRootLogin'
+        line: 'PermitRootLogin yes'
+      become: yes
+      delegate_to: "{{ ip_address }}"
+    
+    - name: Restart SSH service to apply changes
+      ansible.builtin.systemd:
+        name: ssh
+        state: restarted
+      become: yes
+      delegate_to: "{{ ip_address }}"
+
+    # Step 2: Update the operating system
+    - name: Update the OS (Debian/Ubuntu)
+      ansible.builtin.apt:
+        upgrade: dist
+        update_cache: yes
+      become: yes
+      delegate_to: "{{ ip_address }}"
+
+    # Step 3: Prompt for Docker installation
+    - name: Install Docker if chosen
+      ansible.builtin.include_tasks: install_docker.yml
+      when: install_docker == "yes"
+
+    # Step 4: OS Hardening (basic steps)
+    - name: Install UFW firewall
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+      become: yes
+      delegate_to: "{{ ip_address }}"
+
+    - name: Allow SSH through firewall
+      ansible.builtin.ufw:
+        rule: allow
+        port: 22
+      become: yes
+      delegate_to: "{{ ip_address }}"
+
+    - name: Enable UFW firewall
+      ansible.builtin.ufw:
+        state: enabled
+      become: yes
+      delegate_to: "{{ ip_address }}"
+
+    - name: Enable automatic security updates
+      ansible.builtin.apt:
+        name: unattended-upgrades
+        state: present
+      become: yes
+      delegate_to: "{{ ip_address }}"
+
+---
+# install_docker.yml
+- name: Install prerequisites for Docker
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg-agent
+      - software-properties-common
+    state: present
+  become: yes
+  delegate_to: "{{ ip_address }}"
+
+- name: Add Docker GPG key
+  ansible.builtin.apt_key:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    state: present
+  become: yes
+  delegate_to: "{{ ip_address }}"
+
+- name: Add Docker repository
+  ansible.builtin.apt_repository:
+    repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable
+    state: present
+  become: yes
+  delegate_to: "{{ ip_address }}"
+
+- name: Install Docker
+  ansible.builtin.apt:
+    name: docker-ce
+    state: present
+  become: yes
+  delegate_to: "{{ ip_address }}"
+
+- name: Ensure Docker is started
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: yes
+  become: yes
+  delegate_to: "{{ ip_address }}"
