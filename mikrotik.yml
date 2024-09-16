@@ -4,8 +4,6 @@
   gather_facts: false
   vars:
     hostname: 192.168.6.66
-    username: admin
-    password: awt_aom12
   module_defaults:
     group/community.routeros.api:
       tls: false
