@@ -1,32 +1,23 @@
----
-- name: Check and update MikroTik RouterOS using routeros_command
-  hosts: mikrotik
-  gather_facts: no
-  vars:
-    ansible_network_os: "community.network.routeros"
-    routeros_user: "admin"
-    routeros_password: "awt_aom12"
+- name: Run command on remote devices
+  community.routeros.command:
+    commands: /system routerboard print
 
-  tasks:
-    - name: Check for available updates on MikroTik
-      community.network.routeros_command:
-        commands:
-          - /system package update check-for-updates
-      register: update_status
+- name: Run command and check to see if output contains routeros
+  community.routeros.command:
+    commands: /system resource print
+    wait_for: result[0] contains MikroTik
 
-    - name: Display update status
-      debug:
-        var: update_status.stdout
+- name: Run multiple commands on remote nodes
+  community.routeros.command:
+    commands:
+      - /system routerboard print
+      - /system identity print
 
-    - name: Download the update if a new version is available
-      community.network.routeros_command:
-        commands:
-          - /system package update download
-      when: "'New version' in update_status.stdout"
-
-    - name: Reboot the router if a new version is downloaded
-      community.network.routeros_command:
-        commands:
-          - /system reboot
-      when: "'New version' in update_status.stdout"
-      ignore_errors: yes
+- name: Run multiple commands and evaluate the output
+  community.routeros.command:
+    commands:
+      - /system routerboard print
+      - /interface ethernet print
+    wait_for:
+      - result[0] contains x86
+      - result[1] contains ether1
