@@ -3,7 +3,7 @@
   hosts: localhost
   gather_facts: false
   vars:
-    hostname: 192.168.6.66
+    hostname: ip address
   module_defaults:
     group/community.routeros.api:
       tls: false
