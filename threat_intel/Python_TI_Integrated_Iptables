@@ -1,0 +1,95 @@
+import requests
+import time
+import paramiko
+import logging
+
+# Configuration
+FEED_URLS = [
+    'https://lists.blocklist.de/lists/all.txt',
+    'https://rules.emergingthreats.net/blockrules/compromised-ips.txt',
+    'http://www.ciarmy.com/list/ci-badguys.txt',
+    'https://feodotracker.abuse.ch/downloads/ipblocklist.csv',
+    'https://sslbl.abuse.ch/blacklist/sslipblacklist.txt',
+    'https://raw.githubusercontent.com/stamparm/ipsum/master/ipsum.txt'
+]
+REMOTE_IP = ''  # Replace with your remote machine's IP address
+REMOTE_USER = ''  # Replace with your SSH username
+REMOTE_PASS = ''  # Replace with your SSH password
+UPDATE_INTERVAL = 3600  # Update interval in seconds (e.g., 3600 seconds = 1 hour)
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+def download_feed(url):
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.text.splitlines()
+    except requests.RequestException as e:
+        logging.error(f'Error downloading feed from {url}: {e}')
+        return []
+
+def download_all_feeds(urls):
+    all_ips = set()
+    for url in urls:
+        ips = download_feed(url)
+        all_ips.update(ips)
+    return all_ips
+
+def ssh_connect(ip, user, password):
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    try:
+        client.connect(ip, username=user, password=password)
+        return client
+    except paramiko.SSHException as e:
+        logging.error(f'Error connecting to remote machine: {e}')
+        return None
+
+def clear_iptables(client):
+    try:
+        stdin, stdout, stderr = client.exec_command('sudo iptables -F threat_list')
+        stderr_output = stderr.read().decode()
+        if stderr_output:
+            logging.error(f'Error flushing iptables: {stderr_output}')
+    except Exception as e:
+        logging.error(f'Error executing iptables command: {e}')
+
+def update_iptables(client, ips):
+    try:
+        # Create a new chain named threat_list if it doesn't exist
+        stdin, stdout, stderr = client.exec_command('sudo iptables -N threat_list')
+        stderr_output = stderr.read().decode()
+        if 'Chain already exists' not in stderr_output and stderr_output:
+            logging.error(f'Error creating iptables chain: {stderr_output}')
+
+        # Clear existing rules in the threat_list chain
+        clear_iptables(client)
+
+        # Add new rules
+        for ip in ips:
+            client.exec_command(f'sudo iptables -A threat_list -d {ip} -j DROP')
+        
+        # Ensure the INPUT chain uses the threat_list chain
+        client.exec_command('sudo iptables -I INPUT -j threat_list')
+
+    except Exception as e:
+        logging.error(f'Error updating iptables: {e}')
+
+def main():
+    while True:
+        try:
+            ips = download_all_feeds(FEED_URLS)
+            client = ssh_connect(REMOTE_IP, REMOTE_USER, REMOTE_PASS)
+            if client:
+                update_iptables(client, ips)
+                client.close()
+                logging.info('iptables updated successfully.')
+            else:
+                logging.error('Failed to connect to remote machine.')
+        except Exception as e:
+            logging.error(f'Unexpected error: {e}')
+        time.sleep(UPDATE_INTERVAL)
+
+if __name__ == '__main__':
+    main()
