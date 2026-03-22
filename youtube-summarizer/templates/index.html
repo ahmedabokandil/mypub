@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Summarizer</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>YouTube Summarizer</h1>
+            <p class="subtitle">Paste a YouTube URL and get an AI-powered summary</p>
+        </header>
+
+        <main>
+            <form id="summarize-form">
+                <div class="input-group">
+                    <input
+                        type="text"
+                        id="url-input"
+                        placeholder="https://www.youtube.com/watch?v=..."
+                        autocomplete="off"
+                        required
+                    >
+                    <button type="submit" id="submit-btn">Summarize</button>
+                </div>
+
+                <div class="options">
+                    <label>Summary type:</label>
+                    <div class="radio-group">
+                        <label class="radio-label">
+                            <input type="radio" name="summary_type" value="brief" checked>
+                            Brief
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="summary_type" value="detailed">
+                            Detailed
+                        </label>
+                        <label class="radio-label">
+                            <input type="radio" name="summary_type" value="key_points">
+                            Key Points
+                        </label>
+                    </div>
+                </div>
+            </form>
+
+            <div id="video-preview" class="hidden">
+                <iframe id="video-frame" src="" allowfullscreen></iframe>
+            </div>
+
+            <div id="loading" class="hidden">
+                <div class="spinner"></div>
+                <p>Fetching transcript and generating summary...</p>
+            </div>
+
+            <div id="error" class="hidden">
+                <p id="error-message"></p>
+            </div>
+
+            <div id="result" class="hidden">
+                <h2>Summary</h2>
+                <div id="summary-content"></div>
+                <div class="meta">
+                    <span id="transcript-length"></span>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p>Powered by Claude AI &amp; YouTube Transcript API</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
