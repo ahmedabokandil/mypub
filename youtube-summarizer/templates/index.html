@@ -6,10 +6,15 @@
     <title>YouTube Summarizer</title>
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
-<body>
+<body class="dark">
     <div class="container">
         <header>
-            <h1>YouTube Summarizer</h1>
+            <div class="header-row">
+                <h1>YouTube Summarizer</h1>
+                <button id="theme-toggle" class="icon-btn" title="Toggle theme">
+                    <span id="theme-icon">&#9788;</span>
+                </button>
+            </div>
             <p class="subtitle">Paste a YouTube URL and get an AI-powered summary</p>
         </header>
 
@@ -19,7 +24,7 @@
                     <input
                         type="text"
                         id="url-input"
-                        placeholder="https://www.youtube.com/watch?v=..."
+                        placeholder="https://www.youtube.com/watch?v=... or playlist URL"
                         autocomplete="off"
                         required
                     >
@@ -31,6 +36,26 @@
                         <label>AI Provider:</label>
                         <select id="provider-select">
                             <option value="claude">Loading...</option>
+                        </select>
+                    </div>
+                    <div class="option-row">
+                        <label>Language:</label>
+                        <select id="language-select">
+                            <option value="en">English</option>
+                            <option value="auto">Auto-detect</option>
+                            <option value="ar">Arabic</option>
+                            <option value="zh">Chinese</option>
+                            <option value="nl">Dutch</option>
+                            <option value="fr">French</option>
+                            <option value="de">German</option>
+                            <option value="hi">Hindi</option>
+                            <option value="it">Italian</option>
+                            <option value="ja">Japanese</option>
+                            <option value="ko">Korean</option>
+                            <option value="pt">Portuguese</option>
+                            <option value="ru">Russian</option>
+                            <option value="es">Spanish</option>
+                            <option value="tr">Turkish</option>
                         </select>
                     </div>
                     <div class="option-row">
@@ -48,10 +73,29 @@
                                 <input type="radio" name="summary_type" value="key_points">
                                 Key Points
                             </label>
+                            <label class="radio-label">
+                                <input type="radio" name="summary_type" value="timestamps">
+                                Timestamps
+                            </label>
                         </div>
                     </div>
+                    <div class="option-row">
+                        <label>
+                            <input type="checkbox" id="stream-toggle"> Stream response
+                        </label>
+                    </div>
+                    <div class="option-row">
+                        <label>Custom prompt (optional):</label>
+                    </div>
+                    <textarea id="custom-prompt" rows="2" placeholder="e.g. Summarize as if explaining to a 5-year-old..."></textarea>
                 </div>
             </form>
+
+            <!-- Playlist panel -->
+            <div id="playlist-panel" class="hidden">
+                <h3>Playlist Videos</h3>
+                <div id="playlist-list"></div>
+            </div>
 
             <div id="video-preview" class="hidden">
                 <iframe id="video-frame" src="" allowfullscreen></iframe>
@@ -60,6 +104,10 @@
             <div id="loading" class="hidden">
                 <div class="spinner"></div>
                 <p id="loading-message">Fetching transcript and generating summary...</p>
+                <div id="progress-bar-container" class="hidden">
+                    <div id="progress-bar"></div>
+                    <span id="progress-label"></span>
+                </div>
             </div>
 
             <div id="error" class="hidden">
@@ -67,12 +115,53 @@
             </div>
 
             <div id="result" class="hidden">
-                <h2>Summary <span id="provider-badge" class="badge"></span></h2>
+                <div class="result-header">
+                    <h2>Summary <span id="provider-badge" class="badge"></span></h2>
+                    <div class="result-actions">
+                        <button id="copy-btn" class="action-btn" title="Copy to clipboard">Copy</button>
+                        <button id="export-md-btn" class="action-btn" title="Download as Markdown">MD</button>
+                        <button id="export-txt-btn" class="action-btn" title="Download as Text">TXT</button>
+                    </div>
+                </div>
                 <div id="summary-content"></div>
                 <div class="meta">
                     <span id="transcript-length"></span>
                     <span id="transcript-source"></span>
+                    <span id="cache-indicator"></span>
                 </div>
+
+                <!-- Transcript viewer -->
+                <details id="transcript-viewer" class="transcript-section">
+                    <summary>View full transcript</summary>
+                    <div id="transcript-text"></div>
+                </details>
+
+                <!-- Q&A section -->
+                <div class="qa-section">
+                    <h3>Ask a question about this video</h3>
+                    <div class="qa-input-group">
+                        <input type="text" id="qa-input" placeholder="What does the speaker say about...?">
+                        <button id="qa-btn" class="action-btn">Ask</button>
+                    </div>
+                    <div id="qa-answer" class="hidden"></div>
+                </div>
+            </div>
+
+            <!-- Compare panel -->
+            <div id="compare-panel" class="hidden">
+                <h2>Provider Comparison</h2>
+                <div id="compare-results"></div>
+            </div>
+
+            <!-- Compare button -->
+            <div class="compare-section">
+                <button id="compare-btn" class="action-btn">Compare Providers</button>
+            </div>
+
+            <!-- History panel -->
+            <div id="history-panel">
+                <h3>History <button id="clear-history-btn" class="action-btn small">Clear</button></h3>
+                <div id="history-list"></div>
             </div>
         </main>
 
