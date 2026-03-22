@@ -1,6 +1,8 @@
+import glob
 import logging
 import os
 import re
+import shutil
 import tempfile
 
 import anthropic
@@ -106,10 +108,9 @@ def get_transcript(video_id: str) -> tuple[str, str]:
 def transcribe_with_whisper(video_id: str) -> str:
     """Download audio from YouTube and transcribe it with Whisper."""
     video_url = f"https://www.youtube.com/watch?v={video_id}"
+    tmp_dir = tempfile.mkdtemp(prefix="yt_whisper_")
 
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        audio_path = os.path.join(tmp_dir, "audio.mp3")
-
+    try:
         ydl_opts = {
             "format": "bestaudio/best",
             "outtmpl": os.path.join(tmp_dir, "audio.%(ext)s"),
@@ -127,12 +128,17 @@ def transcribe_with_whisper(video_id: str) -> str:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([video_url])
 
-        if not os.path.exists(audio_path):
+        # Find the actual output file (extension may vary by platform/codec)
+        audio_files = glob.glob(os.path.join(tmp_dir, "audio.*"))
+        if not audio_files:
             raise RuntimeError("Audio download failed.")
+        audio_path = audio_files[0]
 
         model = get_whisper_model()
         result = model.transcribe(audio_path)
-        # Audio file is automatically deleted when tmp_dir is cleaned up
+    finally:
+        # Manual cleanup works reliably on both Windows and Linux
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
     return result["text"]
 
