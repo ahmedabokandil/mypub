@@ -8,7 +8,9 @@ const errorMessage = document.getElementById("error-message");
 const result = document.getElementById("result");
 const summaryContent = document.getElementById("summary-content");
 const transcriptLength = document.getElementById("transcript-length");
+const transcriptSource = document.getElementById("transcript-source");
 const providerBadge = document.getElementById("provider-badge");
+const loadingMessage = document.getElementById("loading-message");
 const videoPreview = document.getElementById("video-preview");
 const videoFrame = document.getElementById("video-frame");
 
@@ -71,8 +73,14 @@ form.addEventListener("submit", async (e) => {
     }
 
     loading.classList.remove("hidden");
+    loadingMessage.textContent = "Fetching transcript and generating summary...";
     submitBtn.disabled = true;
     submitBtn.textContent = "Summarizing...";
+
+    // Update loading message after a delay (Whisper fallback takes longer)
+    const loadingTimer = setTimeout(() => {
+        loadingMessage.textContent = "No captions found. Downloading audio and transcribing with Whisper (this may take a while)...";
+    }, 8000);
 
     try {
         const response = await fetch("/summarize", {
@@ -89,12 +97,15 @@ form.addEventListener("submit", async (e) => {
 
         summaryContent.textContent = data.summary;
         transcriptLength.textContent = `Transcript: ${data.transcript_length.toLocaleString()} characters`;
+        const sourceLabel = data.transcript_source === "whisper" ? "Whisper (audio)" : "YouTube captions";
+        transcriptSource.textContent = ` | Source: ${sourceLabel}`;
         providerBadge.textContent = data.provider;
         result.classList.remove("hidden");
     } catch (err) {
         errorMessage.textContent = err.message;
         errorDiv.classList.remove("hidden");
     } finally {
+        clearTimeout(loadingTimer);
         loading.classList.add("hidden");
         submitBtn.disabled = false;
         submitBtn.textContent = "Summarize";

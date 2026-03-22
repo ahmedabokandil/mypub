@@ -1,7 +1,11 @@
+import logging
 import os
 import re
+import tempfile
 
 import anthropic
+import whisper
+import yt_dlp
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 from google import genai
@@ -12,6 +16,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 load_dotenv()
 
 app = Flask(__name__)
+logger = logging.getLogger(__name__)
 
 SUMMARY_PROMPTS = {
     "brief": (
@@ -49,6 +54,19 @@ PROVIDERS = {
     },
 }
 
+# Cache the Whisper model so it's only loaded once
+_whisper_model = None
+
+
+def get_whisper_model():
+    """Load and cache the Whisper model."""
+    global _whisper_model
+    if _whisper_model is None:
+        model_size = os.getenv("WHISPER_MODEL", "base")
+        logger.info("Loading Whisper model: %s", model_size)
+        _whisper_model = whisper.load_model(model_size)
+    return _whisper_model
+
 
 def extract_video_id(url: str) -> str | None:
     """Extract the YouTube video ID from various URL formats."""
@@ -63,11 +81,60 @@ def extract_video_id(url: str) -> str | None:
     return None
 
 
-def get_transcript(video_id: str) -> str:
-    """Fetch the transcript for a YouTube video."""
-    ytt_api = YouTubeTranscriptApi()
-    transcript = ytt_api.fetch(video_id)
-    return " ".join(snippet.text for snippet in transcript)
+def get_transcript(video_id: str) -> tuple[str, str]:
+    """Fetch transcript, falling back to Whisper if captions are unavailable.
+
+    Returns:
+        A tuple of (transcript_text, source) where source is
+        "captions" or "whisper".
+    """
+    # Try YouTube captions first
+    try:
+        ytt_api = YouTubeTranscriptApi()
+        transcript = ytt_api.fetch(video_id)
+        text = " ".join(snippet.text for snippet in transcript)
+        if text.strip():
+            return text, "captions"
+    except Exception:
+        logger.info("No captions for %s, falling back to Whisper", video_id)
+
+    # Fallback: download audio and transcribe with Whisper
+    text = transcribe_with_whisper(video_id)
+    return text, "whisper"
+
+
+def transcribe_with_whisper(video_id: str) -> str:
+    """Download audio from YouTube and transcribe it with Whisper."""
+    video_url = f"https://www.youtube.com/watch?v={video_id}"
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        audio_path = os.path.join(tmp_dir, "audio.mp3")
+
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": os.path.join(tmp_dir, "audio.%(ext)s"),
+            "postprocessors": [
+                {
+                    "key": "FFmpegExtractAudio",
+                    "preferredcodec": "mp3",
+                    "preferredquality": "64",
+                }
+            ],
+            "quiet": True,
+            "no_warnings": True,
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([video_url])
+
+        if not os.path.exists(audio_path):
+            raise RuntimeError("Audio download failed.")
+
+        model = get_whisper_model()
+        result = model.transcribe(audio_path)
+        # Audio file is automatically deleted when tmp_dir is cleaned up
+
+    return result["text"]
 
 
 def build_prompt(transcript: str, summary_type: str) -> str:
@@ -165,9 +232,9 @@ def summarize():
         return jsonify({"error": "Invalid YouTube URL."}), 400
 
     try:
-        transcript = get_transcript(video_id)
-    except Exception:
-        return jsonify({"error": "Could not fetch transcript. Make sure the video has captions enabled."}), 400
+        transcript, transcript_source = get_transcript(video_id)
+    except Exception as e:
+        return jsonify({"error": f"Could not get transcript: {e}"}), 400
 
     if not transcript:
         return jsonify({"error": "Transcript is empty."}), 400
@@ -181,6 +248,7 @@ def summarize():
         "summary": summary,
         "video_id": video_id,
         "transcript_length": len(transcript),
+        "transcript_source": transcript_source,
         "provider": PROVIDERS[provider]["name"],
     })
 
