@@ -4,13 +4,50 @@ import re
 import anthropic
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
+from google import genai
+from mistralai import Mistral
+from openai import OpenAI
 from youtube_transcript_api import YouTubeTranscriptApi
 
 load_dotenv()
 
 app = Flask(__name__)
 
-client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+SUMMARY_PROMPTS = {
+    "brief": (
+        "Provide a concise summary (3-5 sentences) of this YouTube video transcript. "
+        "Focus on the main topic and key takeaway."
+    ),
+    "detailed": (
+        "Provide a detailed summary of this YouTube video transcript. "
+        "Include all major points, arguments, and conclusions. "
+        "Use bullet points for key topics and organize by theme."
+    ),
+    "key_points": (
+        "Extract the key points from this YouTube video transcript. "
+        "List them as numbered bullet points. Include only the most "
+        "important facts, insights, and takeaways."
+    ),
+}
+
+PROVIDERS = {
+    "claude": {
+        "name": "Claude (Anthropic)",
+        "env_key": "ANTHROPIC_API_KEY",
+    },
+    "mistral": {
+        "name": "Mistral AI",
+        "env_key": "MISTRAL_API_KEY",
+    },
+    "gemini": {
+        "name": "Google Gemini",
+        "env_key": "GOOGLE_API_KEY",
+    },
+    "ollama": {
+        "name": "Ollama (Local)",
+        "env_key": None,
+    },
+}
 
 
 def extract_video_id(url: str) -> str | None:
@@ -33,38 +70,58 @@ def get_transcript(video_id: str) -> str:
     return " ".join(snippet.text for snippet in transcript)
 
 
-def summarize_text(transcript: str, summary_type: str = "brief") -> str:
-    """Use Claude to summarize the transcript."""
-    prompts = {
-        "brief": (
-            "Provide a concise summary (3-5 sentences) of this YouTube video transcript. "
-            "Focus on the main topic and key takeaway."
-        ),
-        "detailed": (
-            "Provide a detailed summary of this YouTube video transcript. "
-            "Include all major points, arguments, and conclusions. "
-            "Use bullet points for key topics and organize by theme."
-        ),
-        "key_points": (
-            "Extract the key points from this YouTube video transcript. "
-            "List them as numbered bullet points. Include only the most "
-            "important facts, insights, and takeaways."
-        ),
-    }
+def build_prompt(transcript: str, summary_type: str) -> str:
+    prompt = SUMMARY_PROMPTS.get(summary_type, SUMMARY_PROMPTS["brief"])
+    return f"{prompt}\n\nTranscript:\n{transcript[:50000]}"
 
-    prompt = prompts.get(summary_type, prompts["brief"])
 
+def summarize_with_claude(transcript: str, summary_type: str) -> str:
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
     message = client.messages.create(
         model="claude-sonnet-4-20250514",
         max_tokens=1024,
-        messages=[
-            {
-                "role": "user",
-                "content": f"{prompt}\n\nTranscript:\n{transcript[:50000]}",
-            }
-        ],
+        messages=[{"role": "user", "content": build_prompt(transcript, summary_type)}],
     )
     return message.content[0].text
+
+
+def summarize_with_mistral(transcript: str, summary_type: str) -> str:
+    client = Mistral(api_key=os.getenv("MISTRAL_API_KEY"))
+    response = client.chat.complete(
+        model="mistral-large-latest",
+        messages=[{"role": "user", "content": build_prompt(transcript, summary_type)}],
+        max_tokens=1024,
+    )
+    return response.choices[0].message.content
+
+
+def summarize_with_gemini(transcript: str, summary_type: str) -> str:
+    client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=build_prompt(transcript, summary_type),
+    )
+    return response.text
+
+
+def summarize_with_ollama(transcript: str, summary_type: str) -> str:
+    ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    ollama_model = os.getenv("OLLAMA_MODEL", "llama3")
+    client = OpenAI(base_url=f"{ollama_host}/v1", api_key="ollama")
+    response = client.chat.completions.create(
+        model=ollama_model,
+        messages=[{"role": "user", "content": build_prompt(transcript, summary_type)}],
+        max_tokens=1024,
+    )
+    return response.choices[0].message.content
+
+
+SUMMARIZERS = {
+    "claude": summarize_with_claude,
+    "mistral": summarize_with_mistral,
+    "gemini": summarize_with_gemini,
+    "ollama": summarize_with_ollama,
+}
 
 
 @app.route("/")
@@ -72,14 +129,36 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/providers")
+def providers():
+    """Return available providers based on configured API keys."""
+    available = []
+    for key, info in PROVIDERS.items():
+        configured = info["env_key"] is None or bool(os.getenv(info["env_key"]))
+        available.append({
+            "id": key,
+            "name": info["name"],
+            "configured": configured,
+        })
+    return jsonify(available)
+
+
 @app.route("/summarize", methods=["POST"])
 def summarize():
     data = request.get_json()
     url = data.get("url", "").strip()
     summary_type = data.get("summary_type", "brief")
+    provider = data.get("provider", "claude")
 
     if not url:
         return jsonify({"error": "Please provide a YouTube URL."}), 400
+
+    if provider not in SUMMARIZERS:
+        return jsonify({"error": f"Unknown provider: {provider}"}), 400
+
+    provider_info = PROVIDERS[provider]
+    if provider_info["env_key"] and not os.getenv(provider_info["env_key"]):
+        return jsonify({"error": f"{provider_info['name']} API key not configured. Set {provider_info['env_key']} in .env"}), 400
 
     video_id = extract_video_id(url)
     if not video_id:
@@ -94,16 +173,15 @@ def summarize():
         return jsonify({"error": "Transcript is empty."}), 400
 
     try:
-        summary = summarize_text(transcript, summary_type)
-    except anthropic.AuthenticationError:
-        return jsonify({"error": "Invalid API key. Check your ANTHROPIC_API_KEY."}), 401
-    except anthropic.APIError as e:
-        return jsonify({"error": f"API error: {e.message}"}), 500
+        summary = SUMMARIZERS[provider](transcript, summary_type)
+    except Exception as e:
+        return jsonify({"error": f"{PROVIDERS[provider]['name']} error: {e}"}), 500
 
     return jsonify({
         "summary": summary,
         "video_id": video_id,
         "transcript_length": len(transcript),
+        "provider": PROVIDERS[provider]["name"],
     })
 
 

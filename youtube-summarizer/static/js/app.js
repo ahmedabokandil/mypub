@@ -1,14 +1,36 @@
 const form = document.getElementById("summarize-form");
 const urlInput = document.getElementById("url-input");
 const submitBtn = document.getElementById("submit-btn");
+const providerSelect = document.getElementById("provider-select");
 const loading = document.getElementById("loading");
 const errorDiv = document.getElementById("error");
 const errorMessage = document.getElementById("error-message");
 const result = document.getElementById("result");
 const summaryContent = document.getElementById("summary-content");
 const transcriptLength = document.getElementById("transcript-length");
+const providerBadge = document.getElementById("provider-badge");
 const videoPreview = document.getElementById("video-preview");
 const videoFrame = document.getElementById("video-frame");
+
+async function loadProviders() {
+    try {
+        const response = await fetch("/providers");
+        const providers = await response.json();
+        providerSelect.innerHTML = "";
+        providers.forEach((p) => {
+            const option = document.createElement("option");
+            option.value = p.id;
+            option.textContent = p.name + (p.configured ? "" : " (not configured)");
+            option.disabled = !p.configured;
+            providerSelect.appendChild(option);
+        });
+        // Select first configured provider
+        const first = providers.find((p) => p.configured);
+        if (first) providerSelect.value = first.id;
+    } catch {
+        providerSelect.innerHTML = '<option value="claude">Claude (Anthropic)</option>';
+    }
+}
 
 function extractVideoId(url) {
     const patterns = [
@@ -39,6 +61,7 @@ form.addEventListener("submit", async (e) => {
 
     const url = urlInput.value.trim();
     const summaryType = document.querySelector('input[name="summary_type"]:checked').value;
+    const provider = providerSelect.value;
 
     if (!url) return;
 
@@ -55,7 +78,7 @@ form.addEventListener("submit", async (e) => {
         const response = await fetch("/summarize", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url, summary_type: summaryType }),
+            body: JSON.stringify({ url, summary_type: summaryType, provider }),
         });
 
         const data = await response.json();
@@ -66,6 +89,7 @@ form.addEventListener("submit", async (e) => {
 
         summaryContent.textContent = data.summary;
         transcriptLength.textContent = `Transcript: ${data.transcript_length.toLocaleString()} characters`;
+        providerBadge.textContent = data.provider;
         result.classList.remove("hidden");
     } catch (err) {
         errorMessage.textContent = err.message;
@@ -76,3 +100,5 @@ form.addEventListener("submit", async (e) => {
         submitBtn.textContent = "Summarize";
     }
 });
+
+loadProviders();

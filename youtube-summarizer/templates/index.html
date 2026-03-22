@@ -27,20 +27,28 @@
                 </div>
 
                 <div class="options">
-                    <label>Summary type:</label>
-                    <div class="radio-group">
-                        <label class="radio-label">
-                            <input type="radio" name="summary_type" value="brief" checked>
-                            Brief
-                        </label>
-                        <label class="radio-label">
-                            <input type="radio" name="summary_type" value="detailed">
-                            Detailed
-                        </label>
-                        <label class="radio-label">
-                            <input type="radio" name="summary_type" value="key_points">
-                            Key Points
-                        </label>
+                    <div class="option-row">
+                        <label>AI Provider:</label>
+                        <select id="provider-select">
+                            <option value="claude">Loading...</option>
+                        </select>
+                    </div>
+                    <div class="option-row">
+                        <label>Summary type:</label>
+                        <div class="radio-group">
+                            <label class="radio-label">
+                                <input type="radio" name="summary_type" value="brief" checked>
+                                Brief
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="summary_type" value="detailed">
+                                Detailed
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="summary_type" value="key_points">
+                                Key Points
+                            </label>
+                        </div>
                     </div>
                 </div>
             </form>
@@ -59,7 +67,7 @@
             </div>
 
             <div id="result" class="hidden">
-                <h2>Summary</h2>
+                <h2>Summary <span id="provider-badge" class="badge"></span></h2>
                 <div id="summary-content"></div>
                 <div class="meta">
                     <span id="transcript-length"></span>
@@ -68,7 +76,7 @@
         </main>
 
         <footer>
-            <p>Powered by Claude AI &amp; YouTube Transcript API</p>
+            <p>Powered by Claude, Mistral, Gemini, Ollama &amp; YouTube Transcript API</p>
         </footer>
     </div>
 
