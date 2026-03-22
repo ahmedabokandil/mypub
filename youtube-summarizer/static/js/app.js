@@ -46,6 +46,13 @@ let currentTranscript = "";
 let currentVideoId = "";
 let progressInterval = null;
 
+// Escape HTML to prevent XSS
+function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+}
+
 // ---------------------------------------------------------------------------
 // Theme
 // ---------------------------------------------------------------------------
@@ -101,7 +108,8 @@ function extractVideoId(url) {
 }
 
 function isPlaylistUrl(url) {
-    return /list=/.test(url);
+    // Only treat as playlist if it has list= but no video ID
+    return /list=/.test(url) && !extractVideoId(url);
 }
 
 function showVideoPreview(videoId) {
@@ -115,6 +123,10 @@ function hideAll() {
     resultDiv.classList.add("hidden");
     comparePanel.classList.add("hidden");
     progressBarContainer.classList.add("hidden");
+    progressBar.style.width = "0%";
+    progressLabel.textContent = "";
+    videoPreview.classList.add("hidden");
+    videoFrame.src = "";
     stopProgressPolling();
 }
 
@@ -174,15 +186,28 @@ function getHistory() {
 }
 
 function saveToHistory(entry) {
+    // Don't store full transcript in localStorage to avoid quota issues
+    const historyEntry = { ...entry };
+    delete historyEntry.transcript;
+    // Truncate summary to 2000 chars for storage
+    if (historyEntry.summary && historyEntry.summary.length > 2000) {
+        historyEntry.summary = historyEntry.summary.slice(0, 2000) + "...";
+    }
+
     const history = getHistory();
-    // Avoid duplicates by video_id + provider + summary_type
     const idx = history.findIndex(
         (h) => h.video_id === entry.video_id && h.provider === entry.provider && h.summary_type === entry.summary_type
     );
     if (idx !== -1) history.splice(idx, 1);
-    history.unshift(entry);
+    history.unshift(historyEntry);
     if (history.length > MAX_HISTORY) history.pop();
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    } catch {
+        // localStorage full — remove oldest entries and retry
+        history.splice(Math.floor(history.length / 2));
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    }
     renderHistory();
 }
 
@@ -197,8 +222,8 @@ function renderHistory() {
             (h, i) => `
         <div class="history-item" data-index="${i}">
             <div>
-                <div class="history-title">${h.video_id}</div>
-                <div class="history-meta">${h.provider} &middot; ${h.summary_type} &middot; ${new Date(h.timestamp).toLocaleDateString()}</div>
+                <div class="history-title">${escapeHtml(h.video_id || "")}</div>
+                <div class="history-meta">${escapeHtml(h.provider || "")} &middot; ${escapeHtml(h.summary_type || "")} &middot; ${new Date(h.timestamp).toLocaleDateString()}</div>
             </div>
         </div>`
         )
@@ -209,9 +234,13 @@ function renderHistory() {
             const idx = parseInt(el.dataset.index);
             const entry = history[idx];
             displayResult(entry);
-            showVideoPreview(entry.video_id);
-            currentVideoId = entry.video_id;
-            currentTranscript = entry.transcript || "";
+            if (entry.video_id) {
+                showVideoPreview(entry.video_id);
+            }
+            currentVideoId = entry.video_id || "";
+            // Transcript is not stored in history to save space;
+            // user must re-summarize to use Q&A
+            currentTranscript = "";
         });
     });
 }
@@ -258,7 +287,7 @@ async function handlePlaylist(url) {
         playlistList.innerHTML = data.videos
             .map(
                 (v) =>
-                    `<div class="playlist-item" data-id="${v.video_id}">${v.title}</div>`
+                    `<div class="playlist-item" data-id="${escapeHtml(v.video_id)}">${escapeHtml(v.title)}</div>`
             )
             .join("");
 
@@ -295,8 +324,8 @@ form.addEventListener("submit", async (e) => {
 
     if (!url) return;
 
-    // Check if playlist
-    if (isPlaylistUrl(url) && !extractVideoId(url)) {
+    // Check if playlist-only URL (no video ID)
+    if (isPlaylistUrl(url)) {
         return handlePlaylist(url);
     }
 
@@ -469,7 +498,12 @@ exportTxtBtn.addEventListener("click", () => {
 // ---------------------------------------------------------------------------
 qaBtn.addEventListener("click", async () => {
     const question = qaInput.value.trim();
-    if (!question || !currentTranscript) return;
+    if (!question) return;
+    if (!currentTranscript) {
+        qaAnswer.textContent = "No transcript available. Please summarize a video first (history items don't include transcripts).";
+        qaAnswer.classList.remove("hidden");
+        return;
+    }
 
     qaBtn.disabled = true;
     qaBtn.textContent = "Thinking...";
@@ -561,11 +595,18 @@ compareBtn.addEventListener("click", async () => {
         for (const [provId, result] of Object.entries(data.results)) {
             const card = document.createElement("div");
             card.className = "compare-card";
+            const h3 = document.createElement("h3");
+            h3.textContent = result.name || provId;
+            card.appendChild(h3);
+            const body = document.createElement("div");
             if (result.error) {
-                card.innerHTML = `<h3>${provId}</h3><div class="compare-error">${result.error}</div>`;
+                body.className = "compare-error";
+                body.textContent = result.error;
             } else {
-                card.innerHTML = `<h3>${result.name}</h3><div class="compare-body">${result.summary}</div>`;
+                body.className = "compare-body";
+                body.textContent = result.summary;
             }
+            card.appendChild(body);
             compareResults.appendChild(card);
         }
 

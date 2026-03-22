@@ -22,12 +22,13 @@ from youtube_transcript_api import YouTubeTranscriptApi
 load_dotenv()
 
 app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY", os.urandom(32).hex())
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Database (SQLite cache)
 # ---------------------------------------------------------------------------
-DB_PATH = os.path.join(os.path.dirname(__file__), "cache.db")
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cache.db")
 
 
 def get_db():
@@ -46,20 +47,26 @@ def get_db():
 
 
 def cache_get(key: str) -> dict | None:
-    with get_db() as conn:
+    conn = get_db()
+    try:
         row = conn.execute("SELECT value FROM cache WHERE key = ?", (key,)).fetchone()
         if row:
             return json.loads(row["value"])
-    return None
+        return None
+    finally:
+        conn.close()
 
 
 def cache_set(key: str, value: dict):
-    with get_db() as conn:
+    conn = get_db()
+    try:
         conn.execute(
             "INSERT OR REPLACE INTO cache (key, value) VALUES (?, ?)",
             (key, json.dumps(value)),
         )
         conn.commit()
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -506,20 +513,19 @@ def summarize():
                     full_text.append(token)
                     yield f"data: {json.dumps({'token': token})}\n\n"
                 # Send final metadata
-                result_data = {
-                    "done": True,
+                final_meta = {
                     "video_id": video_id,
                     "transcript_length": len(transcript),
                     "transcript_source": transcript_source,
                     "provider": PROVIDERS[provider]["name"],
                     "transcript": transcript,
                 }
-                # Cache the result
+                # Cache the result (without 'done' flag)
                 cache_set(cache_key, {
                     "summary": "".join(full_text),
-                    **result_data,
+                    **final_meta,
                 })
-                yield f"data: {json.dumps(result_data)}\n\n"
+                yield f"data: {json.dumps({'done': True, **final_meta})}\n\n"
             except Exception as e:
                 yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
@@ -552,8 +558,8 @@ def summarize():
 def qa():
     data = request.get_json()
     provider = data.get("provider", "claude")
-    transcript = data.get("transcript", "").strip()
-    question = data.get("question", "").strip()
+    transcript = data.get("transcript", "").strip()[:MAX_TRANSCRIPT_CHARS]
+    question = data.get("question", "").strip()[:500]
 
     if not transcript or not question:
         return jsonify({"error": "Transcript and question are required."}), 400
