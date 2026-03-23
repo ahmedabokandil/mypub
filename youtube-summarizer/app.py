@@ -10,8 +10,12 @@ import tempfile
 import threading
 
 import anthropic
-import whisper
 import yt_dlp
+
+try:
+    import whisper
+except ImportError:
+    whisper = None
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
 from google import genai
@@ -193,6 +197,11 @@ def get_transcript(video_id: str, language: str = "en") -> tuple[str, str, str |
     except Exception:
         logger.info("No captions for %s (lang=%s), falling back to Whisper", video_id, language)
 
+    if whisper is None:
+        raise RuntimeError(
+            "No captions available and Whisper is not installed. "
+            "Install openai-whisper for audio transcription fallback."
+        )
     text = transcribe_with_whisper(video_id, language)
     return text, "whisper", None
 
