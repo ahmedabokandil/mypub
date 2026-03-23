@@ -1,0 +1,12 @@
+node_modules/
+.env
+*.db
+dist/
+uploads/*
+!uploads/.gitkeep
+.expo/
+android/
+ios/
+*.apk
+*.aab
+generated/
