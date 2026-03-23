@@ -10,7 +10,9 @@ import {
   Modal,
   TextInput,
   StatusBar,
+  SectionList,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../context/AuthContext';
 import { getClient } from '../api/client';
 
@@ -19,6 +21,8 @@ const BOARD_COLORS = [
   '#f97316', '#eab308', '#22c55e', '#14b8a6',
   '#06b6d4', '#3b82f6',
 ];
+
+const FAVORITES_KEY = '@favorite_boards';
 
 const DashboardScreen = ({ navigation }) => {
   const { user } = useAuth();
@@ -30,6 +34,29 @@ const DashboardScreen = ({ navigation }) => {
   const [newBoardDesc, setNewBoardDesc] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [favoriteIds, setFavoriteIds] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const loadFavorites = useCallback(async () => {
+    try {
+      const stored = await AsyncStorage.getItem(FAVORITES_KEY);
+      if (stored) setFavoriteIds(JSON.parse(stored));
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
+  const saveFavorites = async (ids) => {
+    setFavoriteIds(ids);
+    await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(ids));
+  };
+
+  const toggleFavorite = (boardId) => {
+    const updated = favoriteIds.includes(boardId)
+      ? favoriteIds.filter((id) => id !== boardId)
+      : [...favoriteIds, boardId];
+    saveFavorites(updated);
+  };
 
   const fetchBoards = useCallback(async () => {
     try {
@@ -45,8 +72,9 @@ const DashboardScreen = ({ navigation }) => {
   }, []);
 
   useEffect(() => {
+    loadFavorites();
     fetchBoards();
-  }, [fetchBoards]);
+  }, [fetchBoards, loadFavorites]);
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
@@ -100,9 +128,22 @@ const DashboardScreen = ({ navigation }) => {
     return 0;
   };
 
+  const filteredBoards = searchQuery.trim()
+    ? boards.filter(
+        (b) =>
+          b.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          b.description?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : boards;
+
+  const favoriteBoards = filteredBoards.filter((b) => favoriteIds.includes(b._id));
+  const otherBoards = filteredBoards.filter((b) => !favoriteIds.includes(b._id));
+
   const renderBoardCard = ({ item, index }) => {
-    const color = item.color || getColorForBoard(index);
+    const allIndex = boards.findIndex((b) => b._id === item._id);
+    const color = item.color || getColorForBoard(allIndex >= 0 ? allIndex : index);
     const taskCount = getTaskCount(item);
+    const isFav = favoriteIds.includes(item._id);
 
     return (
       <TouchableOpacity
@@ -112,9 +153,20 @@ const DashboardScreen = ({ navigation }) => {
       >
         <View style={[styles.boardAccent, { backgroundColor: color }]} />
         <View style={styles.boardContent}>
-          <Text style={styles.boardName} numberOfLines={1}>
-            {item.name}
-          </Text>
+          <View style={styles.boardTopRow}>
+            <Text style={styles.boardName} numberOfLines={1}>
+              {item.name}
+            </Text>
+            <TouchableOpacity
+              onPress={() => toggleFavorite(item._id)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.starButton}
+            >
+              <Text style={[styles.starText, isFav && styles.starTextActive]}>
+                {isFav ? '*' : '-'}
+              </Text>
+            </TouchableOpacity>
+          </View>
           {item.description ? (
             <Text style={styles.boardDesc} numberOfLines={2}>
               {item.description}
@@ -162,10 +214,57 @@ const DashboardScreen = ({ navigation }) => {
         </View>
       </View>
 
+      {/* Search Bar */}
+      <TouchableOpacity
+        style={styles.searchBar}
+        onPress={() => navigation.navigate('Search')}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.searchIcon}>S</Text>
+        <TextInput
+          style={styles.searchInput}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search boards..."
+          placeholderTextColor="#94a3b8"
+        />
+        {searchQuery.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchQuery('')}>
+            <Text style={styles.clearSearch}>X</Text>
+          </TouchableOpacity>
+        )}
+      </TouchableOpacity>
+
       <FlatList
-        data={boards}
-        renderItem={renderBoardCard}
-        keyExtractor={(item) => item._id}
+        data={[]}
+        renderItem={null}
+        ListHeaderComponent={
+          <>
+            {/* Favorite Boards */}
+            {favoriteBoards.length > 0 && (
+              <View style={styles.sectionContainer}>
+                <Text style={styles.sectionTitle}>Starred Boards</Text>
+                {favoriteBoards.map((item, index) => (
+                  <View key={item._id}>
+                    {renderBoardCard({ item, index })}
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* All/Other Boards */}
+            <View style={styles.sectionContainer}>
+              {favoriteBoards.length > 0 && (
+                <Text style={styles.sectionTitle}>All Boards</Text>
+              )}
+              {otherBoards.map((item, index) => (
+                <View key={item._id}>
+                  {renderBoardCard({ item, index })}
+                </View>
+              ))}
+            </View>
+          </>
+        }
         contentContainerStyle={styles.listContainer}
         refreshControl={
           <RefreshControl
@@ -176,13 +275,18 @@ const DashboardScreen = ({ navigation }) => {
           />
         }
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>📋</Text>
-            <Text style={styles.emptyTitle}>No Boards Yet</Text>
-            <Text style={styles.emptyText}>
-              Create your first board to start organizing tasks
-            </Text>
-          </View>
+          filteredBoards.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyTitle}>
+                {searchQuery.trim() ? 'No boards found' : 'No Boards Yet'}
+              </Text>
+              <Text style={styles.emptyText}>
+                {searchQuery.trim()
+                  ? 'Try a different search term'
+                  : 'Create your first board to start organizing tasks'}
+              </Text>
+            </View>
+          ) : null
         }
       />
 
@@ -282,7 +386,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 56,
-    paddingBottom: 16,
+    paddingBottom: 12,
     backgroundColor: '#f8fafc',
   },
   greeting: {
@@ -309,6 +413,47 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
   },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginBottom: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 14,
+  },
+  searchIcon: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#94a3b8',
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#1e293b',
+  },
+  clearSearch: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    padding: 4,
+  },
+  sectionContainer: {
+    marginBottom: 4,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 10,
+    paddingHorizontal: 4,
+  },
   listContainer: {
     padding: 16,
     paddingBottom: 100,
@@ -332,11 +477,35 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 16,
   },
+  boardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
   boardName: {
     fontSize: 17,
     fontWeight: '700',
     color: '#1e293b',
-    marginBottom: 4,
+    flex: 1,
+    marginRight: 8,
+  },
+  starButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: '#f8fafc',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  starText: {
+    fontSize: 18,
+    color: '#cbd5e1',
+    fontWeight: '700',
+  },
+  starTextActive: {
+    color: '#f59e0b',
+    fontSize: 22,
   },
   boardDesc: {
     fontSize: 13,
@@ -368,10 +537,6 @@ const styles = StyleSheet.create({
   emptyContainer: {
     alignItems: 'center',
     paddingTop: 80,
-  },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: 16,
   },
   emptyTitle: {
     fontSize: 20,

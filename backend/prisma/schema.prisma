@@ -8,20 +8,28 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  name          String
-  avatar        String?
-  password      String?
-  googleId      String?   @unique
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id              String    @id @default(uuid())
+  email           String    @unique
+  name            String
+  avatar          String?
+  password        String?
+  googleId        String?   @unique
+  role            String    @default("user")
+  twoFactorSecret String?
+  twoFactorEnabled Boolean  @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  tasks         Task[]
-  boards        Board[]
-  boardMembers  BoardMember[]
-  comments      Comment[]
-  notifications Notification[]
+  tasks           Task[]
+  boards          Board[]
+  boardMembers    BoardMember[]
+  comments        Comment[]
+  notifications   Notification[]
+  timeEntries     TimeEntry[]
+  activityLogs    ActivityLog[]
+  chatMessages    ChatMessage[]
+  favorites       Favorite[]
+  assignedTasks   TaskAssignment[]
 }
 
 model Board {
@@ -29,14 +37,20 @@ model Board {
   name        String
   description String?
   color       String   @default("#6366f1")
+  template    String?
+  archived    Boolean  @default(false)
   ownerId     String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  owner       User          @relation(fields: [ownerId], references: [id])
-  columns     Column[]
-  members     BoardMember[]
-  tasks       Task[]
+  owner        User           @relation(fields: [ownerId], references: [id])
+  columns      Column[]
+  members      BoardMember[]
+  tasks        Task[]
+  activityLogs ActivityLog[]
+  chatMessages ChatMessage[]
+  favorites    Favorite[]
+  labels       Label[]
 }
 
 model BoardMember {
@@ -52,38 +66,100 @@ model BoardMember {
 }
 
 model Column {
-  id       String @id @default(uuid())
+  id       String  @id @default(uuid())
   name     String
   position Int
-  color    String @default("#e2e8f0")
+  color    String  @default("#e2e8f0")
   boardId  String
+  isCustom Boolean @default(false)
 
   board Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
   tasks Task[]
 }
 
 model Task {
-  id          String    @id @default(uuid())
-  title       String
-  description String?
-  dueDate     DateTime?
-  priority    String    @default("medium")
-  position    Int       @default(0)
-  reminder    DateTime?
-  reminderSent Boolean  @default(false)
-  columnId    String
-  boardId     String
-  userId      String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id            String    @id @default(uuid())
+  title         String
+  description   String?
+  dueDate       DateTime?
+  priority      String    @default("medium")
+  position      Int       @default(0)
+  reminder      DateTime?
+  reminderSent  Boolean   @default(false)
+  archived      Boolean   @default(false)
+  columnId      String
+  boardId       String
+  userId        String
+  parentId      String?
+  isRecurring   Boolean   @default(false)
+  recurPattern  String?
+  recurInterval Int?
+  recurNextDate DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  column      Column       @relation(fields: [columnId], references: [id], onDelete: Cascade)
-  board       Board        @relation(fields: [boardId], references: [id], onDelete: Cascade)
-  user        User         @relation(fields: [userId], references: [id])
-  attachments Attachment[]
-  embeds      Embed[]
-  comments    Comment[]
-  labels      TaskLabel[]
+  column       Column           @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  board        Board            @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user         User             @relation(fields: [userId], references: [id])
+  parent       Task?            @relation("SubTasks", fields: [parentId], references: [id])
+  subtasks     Task[]           @relation("SubTasks")
+  attachments  Attachment[]
+  embeds       Embed[]
+  comments     Comment[]
+  labels       TaskLabel[]
+  timeEntries  TimeEntry[]
+  checklists   ChecklistItem[]
+  dependencies TaskDependency[] @relation("DependentTask")
+  dependents   TaskDependency[] @relation("BlockingTask")
+  assignments  TaskAssignment[]
+  tags         TaskTag[]
+}
+
+model TaskAssignment {
+  id     String @id @default(uuid())
+  taskId String
+  userId String
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+}
+
+model ChecklistItem {
+  id        String  @id @default(uuid())
+  title     String
+  completed Boolean @default(false)
+  position  Int     @default(0)
+  taskId    String
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model TaskDependency {
+  id             String @id @default(uuid())
+  dependentId    String
+  blockingId     String
+  type           String @default("blocked_by")
+
+  dependent Task @relation("DependentTask", fields: [dependentId], references: [id], onDelete: Cascade)
+  blocking  Task @relation("BlockingTask", fields: [blockingId], references: [id], onDelete: Cascade)
+
+  @@unique([dependentId, blockingId])
+}
+
+model TimeEntry {
+  id          String    @id @default(uuid())
+  taskId      String
+  userId      String
+  startTime   DateTime
+  endTime     DateTime?
+  duration    Int?
+  description String?
+  createdAt   DateTime  @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
 }
 
 model Attachment {
@@ -99,7 +175,7 @@ model Attachment {
 }
 
 model Embed {
-  id      String @id @default(uuid())
+  id      String  @id @default(uuid())
   url     String
   type    String
   title   String?
@@ -120,10 +196,13 @@ model Comment {
 }
 
 model Label {
-  id    String      @id @default(uuid())
-  name  String
-  color String
-  tasks TaskLabel[]
+  id      String      @id @default(uuid())
+  name    String
+  color   String
+  boardId String?
+  tasks   TaskLabel[]
+
+  board Board? @relation(fields: [boardId], references: [id], onDelete: Cascade)
 }
 
 model TaskLabel {
@@ -135,6 +214,24 @@ model TaskLabel {
   label Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
 
   @@unique([taskId, labelId])
+}
+
+model Tag {
+  id    String    @id @default(uuid())
+  name  String    @unique
+  color String    @default("#6366f1")
+  tasks TaskTag[]
+}
+
+model TaskTag {
+  id     String @id @default(uuid())
+  taskId String
+  tagId  String
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, tagId])
 }
 
 model Notification {
@@ -151,7 +248,7 @@ model Notification {
 }
 
 model PushSubscription {
-  id        String @id @default(uuid())
+  id        String   @id @default(uuid())
   userId    String
   endpoint  String
   p256dh    String
@@ -159,4 +256,59 @@ model PushSubscription {
   createdAt DateTime @default(now())
 
   @@unique([userId, endpoint])
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  action    String
+  entity    String
+  entityId  String
+  details   String?
+  userId    String
+  boardId   String?
+  createdAt DateTime @default(now())
+
+  user  User   @relation(fields: [userId], references: [id])
+  board Board? @relation(fields: [boardId], references: [id], onDelete: Cascade)
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  content   String
+  boardId   String
+  userId    String
+  createdAt DateTime @default(now())
+
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id])
+}
+
+model Favorite {
+  id      String @id @default(uuid())
+  userId  String
+  boardId String
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  board Board @relation(fields: [boardId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, boardId])
+}
+
+model BoardTemplate {
+  id          String @id @default(uuid())
+  name        String
+  description String?
+  columns     String
+  color       String @default("#6366f1")
+  icon        String @default("layout")
+  isDefault   Boolean @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model EmailDigestConfig {
+  id        String  @id @default(uuid())
+  userId    String  @unique
+  frequency String  @default("daily")
+  enabled   Boolean @default(false)
+  lastSent  DateTime?
 }

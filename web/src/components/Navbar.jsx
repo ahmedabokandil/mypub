@@ -1,24 +1,34 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, LogOut, ChevronDown, Zap, User, LayoutDashboard } from 'lucide-react';
+import {
+  Bell, LogOut, ChevronDown, Zap, LayoutDashboard, Search, Calendar,
+  BarChart3, Shield, Moon, Sun, Star
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
+import { useTheme } from '../context/ThemeContext';
 import NotificationPanel from './NotificationPanel';
 
 export default function Navbar() {
   const { user, logout } = useAuth();
   const { unreadCount } = useNotifications();
+  const { theme, toggleTheme } = useTheme();
   const [notifOpen, setNotifOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [navMenuOpen, setNavMenuOpen] = useState(false);
   const navigate = useNavigate();
   const userMenuRef = useRef(null);
   const notifRef = useRef(null);
+  const navMenuRef = useRef(null);
 
   useEffect(() => {
     const handleClick = (e) => {
       if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
         setUserMenuOpen(false);
+      }
+      if (navMenuRef.current && !navMenuRef.current.contains(e.target)) {
+        setNavMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClick);
@@ -35,7 +45,7 @@ export default function Navbar() {
     : 'U';
 
   return (
-    <nav className="sticky top-0 z-30 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 shadow-lg shadow-indigo-500/20">
+    <nav className="sticky top-0 z-30 bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 shadow-lg shadow-indigo-500/20 dark:shadow-gray-900/50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
@@ -47,7 +57,7 @@ export default function Navbar() {
           </Link>
 
           {/* Right side */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {/* Dashboard link */}
             <Link
               to="/"
@@ -57,12 +67,87 @@ export default function Navbar() {
               Dashboard
             </Link>
 
+            {/* Nav dropdown (Calendar, Analytics) */}
+            <div className="relative hidden sm:block" ref={navMenuRef}>
+              <button
+                onClick={() => {
+                  setNavMenuOpen(!navMenuOpen);
+                  setNotifOpen(false);
+                  setUserMenuOpen(false);
+                }}
+                className="flex items-center gap-1 px-3 py-2 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-all text-sm font-medium"
+              >
+                More
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${navMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              <AnimatePresence>
+                {navMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-full mt-2 w-48 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-slate-100 dark:border-gray-700 z-50 overflow-hidden"
+                  >
+                    <div className="p-1.5">
+                      <Link
+                        to="/calendar"
+                        onClick={() => setNavMenuOpen(false)}
+                        className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                      >
+                        <Calendar className="w-4 h-4" />
+                        Calendar
+                      </Link>
+                      <Link
+                        to="/analytics"
+                        onClick={() => setNavMenuOpen(false)}
+                        className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                      >
+                        <BarChart3 className="w-4 h-4" />
+                        Analytics
+                      </Link>
+                      {user?.role === 'admin' && (
+                        <Link
+                          to="/admin"
+                          onClick={() => setNavMenuOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                        >
+                          <Shield className="w-4 h-4" />
+                          Admin
+                        </Link>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Search */}
+            <Link
+              to="/search"
+              className="p-2.5 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+              title="Search (Ctrl+K)"
+            >
+              <Search className="w-5 h-5" />
+            </Link>
+
+            {/* Dark mode toggle */}
+            <button
+              onClick={toggleTheme}
+              className="p-2.5 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+              title="Toggle dark mode"
+            >
+              {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+
             {/* Notifications */}
             <div className="relative" ref={notifRef}>
               <button
                 onClick={() => {
                   setNotifOpen(!notifOpen);
                   setUserMenuOpen(false);
+                  setNavMenuOpen(false);
                 }}
                 className="relative p-2.5 text-white/70 hover:text-white hover:bg-white/10 rounded-xl transition-all"
               >
@@ -71,7 +156,7 @@ export default function Navbar() {
                   <motion.span
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
-                    className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center ring-2 ring-indigo-700"
+                    className="absolute -top-0.5 -right-0.5 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center ring-2 ring-indigo-700 dark:ring-gray-900"
                   >
                     {unreadCount > 9 ? '9+' : unreadCount}
                   </motion.span>
@@ -86,6 +171,7 @@ export default function Navbar() {
                 onClick={() => {
                   setUserMenuOpen(!userMenuOpen);
                   setNotifOpen(false);
+                  setNavMenuOpen(false);
                 }}
                 className="flex items-center gap-2 pl-2 pr-3 py-1.5 hover:bg-white/10 rounded-xl transition-all"
               >
@@ -105,24 +191,50 @@ export default function Navbar() {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -10, scale: 0.95 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-2xl border border-slate-100 z-50 overflow-hidden"
+                    className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-slate-100 dark:border-gray-700 z-50 overflow-hidden"
                   >
-                    <div className="p-3 border-b border-slate-100">
-                      <p className="text-sm font-semibold text-slate-800 truncate">{user?.name}</p>
-                      <p className="text-xs text-slate-500 truncate">{user?.email}</p>
+                    <div className="p-3 border-b border-slate-100 dark:border-gray-700">
+                      <p className="text-sm font-semibold text-slate-800 dark:text-gray-200 truncate">{user?.name}</p>
+                      <p className="text-xs text-slate-500 dark:text-gray-400 truncate">{user?.email}</p>
                     </div>
                     <div className="p-1.5">
                       <Link
                         to="/"
                         onClick={() => setUserMenuOpen(false)}
-                        className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
+                        className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
                       >
                         <LayoutDashboard className="w-4 h-4" />
                         Dashboard
                       </Link>
+                      <Link
+                        to="/calendar"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-700 rounded-lg transition-colors sm:hidden"
+                      >
+                        <Calendar className="w-4 h-4" />
+                        Calendar
+                      </Link>
+                      <Link
+                        to="/analytics"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-700 rounded-lg transition-colors sm:hidden"
+                      >
+                        <BarChart3 className="w-4 h-4" />
+                        Analytics
+                      </Link>
+                      {user?.role === 'admin' && (
+                        <Link
+                          to="/admin"
+                          onClick={() => setUserMenuOpen(false)}
+                          className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-600 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                        >
+                          <Shield className="w-4 h-4" />
+                          Admin Panel
+                        </Link>
+                      )}
                       <button
                         onClick={handleLogout}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
                       >
                         <LogOut className="w-4 h-4" />
                         Sign out

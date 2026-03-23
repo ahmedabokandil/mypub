@@ -85,6 +85,53 @@ function startReminderService() {
     } catch (error) {
       console.error('Reminder service error:', error.message);
     }
+
+    // Process recurring tasks
+    try {
+      const now = new Date();
+      const { calculateNextDate } = require('../routes/recurring');
+
+      const recurringTasks = await prisma.task.findMany({
+        where: {
+          isRecurring: true,
+          recurNextDate: { lte: now },
+        },
+      });
+
+      for (const task of recurringTasks) {
+        try {
+          // Create a copy of the task in the same column
+          await prisma.task.create({
+            data: {
+              title: task.title,
+              description: task.description,
+              priority: task.priority,
+              dueDate: task.dueDate ? new Date(new Date(task.dueDate).getTime() + (task.recurNextDate.getTime() - new Date().getTime())) : null,
+              columnId: task.columnId,
+              boardId: task.boardId,
+              userId: task.userId,
+              position: task.position,
+            },
+          });
+
+          // Update recurNextDate based on pattern
+          const nextDate = calculateNextDate(now, task.recurPattern, task.recurInterval || 1);
+          await prisma.task.update({
+            where: { id: task.id },
+            data: {
+              recurNextDate: nextDate,
+              reminderSent: false,
+            },
+          });
+
+          console.log(`Recurring task created from: ${task.title}`);
+        } catch (recurError) {
+          console.error(`Error processing recurring task ${task.id}:`, recurError.message);
+        }
+      }
+    } catch (error) {
+      console.error('Recurring task service error:', error.message);
+    }
   });
 
   console.log('Reminder service started');

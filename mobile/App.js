@@ -16,6 +16,10 @@ import BoardScreen from './src/screens/BoardScreen';
 import TaskDetailScreen from './src/screens/TaskDetailScreen';
 import NotificationsScreen from './src/screens/NotificationsScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import SearchScreen from './src/screens/SearchScreen';
+import CalendarScreen from './src/screens/CalendarScreen';
+import AnalyticsScreen from './src/screens/AnalyticsScreen';
+import ChatScreen from './src/screens/ChatScreen';
 
 const AuthStack = createNativeStackNavigator();
 const MainStack = createNativeStackNavigator();
@@ -23,7 +27,9 @@ const Tab = createBottomTabNavigator();
 
 const TAB_ICONS = {
   Dashboard: { active: '🏠', inactive: '🏡' },
-  Boards: { active: '📋', inactive: '📋' },
+  Search: { active: '🔍', inactive: '🔍' },
+  Calendar: { active: '📅', inactive: '📅' },
+  Analytics: { active: '📊', inactive: '📊' },
   Notifications: { active: '🔔', inactive: '🔕' },
   Profile: { active: '👤', inactive: '👤' },
 };
@@ -64,7 +70,7 @@ function HomeTabs() {
         tabBarActiveTintColor: '#6366f1',
         tabBarInactiveTintColor: '#94a3b8',
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: 10,
           fontWeight: '600',
         },
         tabBarIcon: ({ focused }) => {
@@ -99,6 +105,33 @@ function HomeTabs() {
         options={{
           tabBarIcon: ({ focused }) => (
             <TabLabel emoji="🏠" focused={focused} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Search"
+        component={SearchScreen}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabLabel emoji="🔍" focused={focused} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Calendar"
+        component={CalendarScreen}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabLabel emoji="📅" focused={focused} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Analytics"
+        component={AnalyticsScreen}
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabLabel emoji="📊" focused={focused} />
           ),
         }}
       />
@@ -159,6 +192,11 @@ function MainNavigator() {
       <MainStack.Screen
         name="TaskDetail"
         component={TaskDetailScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
+      <MainStack.Screen
+        name="Chat"
+        component={ChatScreen}
         options={{ animation: 'slide_from_right' }}
       />
     </MainStack.Navigator>

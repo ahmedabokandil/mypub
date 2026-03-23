@@ -15,12 +15,22 @@ import {
 import { format } from 'date-fns';
 import { getClient } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import SubtaskList from '../components/SubtaskList';
+import TimeTracker from '../components/TimeTracker';
 
 const PRIORITIES = [
   { value: 'low', label: 'Low', color: '#16a34a', bg: '#f0fdf4' },
   { value: 'medium', label: 'Medium', color: '#ca8a04', bg: '#fefce8' },
   { value: 'high', label: 'High', color: '#ea580c', bg: '#fff7ed' },
   { value: 'urgent', label: 'Urgent', color: '#dc2626', bg: '#fef2f2' },
+];
+
+const RECURRENCE_PATTERNS = [
+  { value: '', label: 'None' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'biweekly', label: 'Bi-weekly' },
+  { value: 'monthly', label: 'Monthly' },
 ];
 
 const TaskDetailScreen = ({ route, navigation }) => {
@@ -36,6 +46,10 @@ const TaskDetailScreen = ({ route, navigation }) => {
   const [reminder, setReminder] = useState('');
   const [newComment, setNewComment] = useState('');
   const [addingComment, setAddingComment] = useState(false);
+  const [recurrence, setRecurrence] = useState('');
+  const [isArchived, setIsArchived] = useState(false);
+  const [isTracking, setIsTracking] = useState(false);
+  const [trackingStart, setTrackingStart] = useState(null);
 
   const fetchTask = useCallback(async () => {
     try {
@@ -48,6 +62,8 @@ const TaskDetailScreen = ({ route, navigation }) => {
       setPriority(taskData.priority || 'medium');
       setDueDate(taskData.dueDate || '');
       setReminder(taskData.reminder || '');
+      setRecurrence(taskData.recurrence || taskData.recurringPattern || '');
+      setIsArchived(taskData.archived || false);
     } catch (err) {
       console.error('Error fetching task:', err);
     } finally {
@@ -69,6 +85,9 @@ const TaskDetailScreen = ({ route, navigation }) => {
         priority,
         dueDate: dueDate || null,
         reminder: reminder || null,
+        recurrence: recurrence || null,
+        recurringPattern: recurrence || null,
+        archived: isArchived,
       });
       Alert.alert('Success', 'Task updated successfully');
     } catch (err) {
@@ -97,6 +116,21 @@ const TaskDetailScreen = ({ route, navigation }) => {
     ]);
   };
 
+  const handleArchive = async () => {
+    const newArchived = !isArchived;
+    setIsArchived(newArchived);
+    try {
+      const client = getClient();
+      await client.put(`/api/boards/${boardId}/tasks/${taskId}`, {
+        archived: newArchived,
+      });
+      Alert.alert('Success', newArchived ? 'Task archived' : 'Task unarchived');
+    } catch (err) {
+      setIsArchived(!newArchived);
+      Alert.alert('Error', 'Failed to update task');
+    }
+  };
+
   const handleAddComment = async () => {
     if (!newComment.trim()) return;
     setAddingComment(true);
@@ -111,6 +145,50 @@ const TaskDetailScreen = ({ route, navigation }) => {
       Alert.alert('Error', 'Failed to add comment');
     } finally {
       setAddingComment(false);
+    }
+  };
+
+  const handleSubtaskUpdate = async (updatedSubtasks) => {
+    try {
+      const client = getClient();
+      await client.put(`/api/boards/${boardId}/tasks/${taskId}`, {
+        subtasks: updatedSubtasks,
+        checklist: updatedSubtasks,
+      });
+      setTask((prev) => ({ ...prev, subtasks: updatedSubtasks, checklist: updatedSubtasks }));
+    } catch (err) {
+      Alert.alert('Error', 'Failed to update checklist');
+      fetchTask();
+    }
+  };
+
+  const handleTimeStart = () => {
+    setIsTracking(true);
+    setTrackingStart(new Date().toISOString());
+  };
+
+  const handleTimeStop = async () => {
+    setIsTracking(false);
+    const endTime = new Date().toISOString();
+    try {
+      const client = getClient();
+      await client.post(`/api/boards/${boardId}/tasks/${taskId}/time`, {
+        startTime: trackingStart,
+        endTime: endTime,
+      });
+      setTrackingStart(null);
+      fetchTask();
+    } catch (err) {
+      // Store locally if API not available
+      const duration = Math.floor((new Date(endTime).getTime() - new Date(trackingStart).getTime()) / 1000);
+      const newEntry = { startTime: trackingStart, endTime, duration };
+      const existingEntries = task?.timeEntries || task?.timeTracking || [];
+      setTask((prev) => ({
+        ...prev,
+        timeEntries: [...existingEntries, newEntry],
+        timeTracking: [...existingEntries, newEntry],
+      }));
+      setTrackingStart(null);
     }
   };
 
@@ -141,6 +219,9 @@ const TaskDetailScreen = ({ route, navigation }) => {
   const comments = task.comments || [];
   const attachments = task.attachments || [];
   const embeddedUrls = task.embeddedUrls || task.urls || [];
+  const subtasks = task.subtasks || task.checklist || [];
+  const timeEntries = task.timeEntries || task.timeTracking || [];
+  const assignees = task.assignees || task.assignedTo || [];
 
   return (
     <KeyboardAvoidingView
@@ -149,7 +230,7 @@ const TaskDetailScreen = ({ route, navigation }) => {
     >
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text style={styles.backText}>←</Text>
+          <Text style={styles.backText}>{'<-'}</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>
           Task Details
@@ -172,6 +253,35 @@ const TaskDetailScreen = ({ route, navigation }) => {
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
+        {/* Archived Banner */}
+        {isArchived && (
+          <View style={styles.archivedBanner}>
+            <Text style={styles.archivedText}>This task is archived</Text>
+          </View>
+        )}
+
+        {/* Assignees */}
+        {assignees.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Assigned To</Text>
+            <View style={styles.assigneesRow}>
+              {assignees.map((assignee, idx) => {
+                const name = assignee?.name || assignee?.email || 'User';
+                return (
+                  <View key={assignee?._id || idx} style={styles.assigneeChip}>
+                    <View style={styles.assigneeAvatar}>
+                      <Text style={styles.assigneeAvatarText}>
+                        {name.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <Text style={styles.assigneeName} numberOfLines={1}>{name}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
         {/* Title */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Title</Text>
@@ -248,6 +358,54 @@ const TaskDetailScreen = ({ route, navigation }) => {
           />
         </View>
 
+        {/* Recurring Task */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Recurring</Text>
+          <View style={styles.recurrenceRow}>
+            {RECURRENCE_PATTERNS.map((pat) => (
+              <TouchableOpacity
+                key={pat.value}
+                style={[
+                  styles.recurrenceOption,
+                  recurrence === pat.value && styles.recurrenceSelected,
+                ]}
+                onPress={() => setRecurrence(pat.value)}
+              >
+                <Text
+                  style={[
+                    styles.recurrenceText,
+                    recurrence === pat.value && styles.recurrenceSelectedText,
+                  ]}
+                >
+                  {pat.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Subtasks / Checklist */}
+        <View style={styles.section}>
+          <SubtaskList
+            subtasks={subtasks}
+            onUpdate={handleSubtaskUpdate}
+            boardId={boardId}
+            taskId={taskId}
+          />
+        </View>
+
+        {/* Time Tracker */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Time Tracking</Text>
+          <TimeTracker
+            timeEntries={timeEntries}
+            isRunning={isTracking}
+            currentStartTime={trackingStart}
+            onStart={handleTimeStart}
+            onStop={handleTimeStop}
+          />
+        </View>
+
         {/* Attachments */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -265,7 +423,6 @@ const TaskDetailScreen = ({ route, navigation }) => {
                   if (att.url) Linking.openURL(att.url);
                 }}
               >
-                <Text style={styles.attachmentIcon}>📎</Text>
                 <Text style={styles.attachmentName} numberOfLines={1}>
                   {att.filename || att.name || `Attachment ${index + 1}`}
                 </Text>
@@ -286,7 +443,6 @@ const TaskDetailScreen = ({ route, navigation }) => {
                 style={styles.linkItem}
                 onPress={() => Linking.openURL(typeof url === 'string' ? url : url.url)}
               >
-                <Text style={styles.linkIcon}>🔗</Text>
                 <Text style={styles.linkText} numberOfLines={1}>
                   {typeof url === 'string' ? url : url.url || url.title}
                 </Text>
@@ -349,6 +505,13 @@ const TaskDetailScreen = ({ route, navigation }) => {
           </View>
         </View>
 
+        {/* Archive */}
+        <TouchableOpacity style={styles.archiveButton} onPress={handleArchive}>
+          <Text style={styles.archiveButtonText}>
+            {isArchived ? 'Unarchive Task' : 'Archive Task'}
+          </Text>
+        </TouchableOpacity>
+
         {/* Delete */}
         <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
           <Text style={styles.deleteButtonText}>Delete Task</Text>
@@ -395,7 +558,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   backText: {
-    fontSize: 22,
+    fontSize: 18,
     color: '#1e293b',
     fontWeight: '600',
   },
@@ -423,6 +586,18 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
+  },
+  archivedBanner: {
+    backgroundColor: '#fef3c7',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  archivedText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#92400e',
   },
   section: {
     backgroundColor: '#ffffff',
@@ -489,6 +664,65 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#64748b',
   },
+  recurrenceRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  recurrenceOption: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+  },
+  recurrenceSelected: {
+    borderColor: '#6366f1',
+    backgroundColor: '#eef2ff',
+  },
+  recurrenceText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  recurrenceSelectedText: {
+    color: '#6366f1',
+  },
+  assigneesRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  assigneeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f1f5f9',
+    borderRadius: 20,
+    paddingRight: 12,
+    paddingVertical: 4,
+    paddingLeft: 4,
+  },
+  assigneeAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#6366f1',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  assigneeAvatarText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  assigneeName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#334155',
+    maxWidth: 120,
+  },
   addButton: {
     color: '#6366f1',
     fontWeight: '700',
@@ -501,10 +735,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
     borderRadius: 10,
     marginBottom: 6,
-  },
-  attachmentIcon: {
-    fontSize: 16,
-    marginRight: 8,
   },
   attachmentName: {
     flex: 1,
@@ -523,10 +753,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#eef2ff',
     borderRadius: 10,
     marginBottom: 6,
-  },
-  linkIcon: {
-    fontSize: 14,
-    marginRight: 8,
   },
   linkText: {
     flex: 1,
@@ -604,6 +830,21 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '700',
     fontSize: 14,
+  },
+  archiveButton: {
+    backgroundColor: '#fef3c7',
+    borderWidth: 1.5,
+    borderColor: '#fcd34d',
+    borderRadius: 14,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 4,
+    marginBottom: 10,
+  },
+  archiveButtonText: {
+    color: '#92400e',
+    fontSize: 16,
+    fontWeight: '700',
   },
   deleteButton: {
     backgroundColor: '#fef2f2',

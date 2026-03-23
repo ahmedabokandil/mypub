@@ -31,6 +31,7 @@ const BoardScreen = ({ route, navigation }) => {
   const [newTaskPriority, setNewTaskPriority] = useState('medium');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
 
   const fetchBoard = useCallback(async () => {
     try {
@@ -115,7 +116,7 @@ const BoardScreen = ({ route, navigation }) => {
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Text style={styles.backText}>←</Text>
+          <Text style={styles.backText}>{'<-'}</Text>
         </TouchableOpacity>
         <View style={styles.headerInfo}>
           <Text style={styles.headerTitle} numberOfLines={1}>
@@ -126,6 +127,24 @@ const BoardScreen = ({ route, navigation }) => {
               {board.members.length} {board.members.length === 1 ? 'member' : 'members'}
             </Text>
           ) : null}
+        </View>
+        <View style={styles.headerActions}>
+          {/* Archive Filter Toggle */}
+          <TouchableOpacity
+            style={[styles.headerButton, showArchived && styles.headerButtonActive]}
+            onPress={() => setShowArchived(!showArchived)}
+          >
+            <Text style={[styles.headerButtonText, showArchived && styles.headerButtonTextActive]}>
+              Arc
+            </Text>
+          </TouchableOpacity>
+          {/* Chat Button */}
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => navigation.navigate('Chat', { boardId, boardName: board.name })}
+          >
+            <Text style={styles.headerButtonText}>Chat</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -145,7 +164,12 @@ const BoardScreen = ({ route, navigation }) => {
           const colColor =
             COLUMN_COLORS[column.name] ||
             Object.values(COLUMN_COLORS)[colIndex % Object.values(COLUMN_COLORS).length];
-          const tasks = column.tasks || [];
+          let tasks = column.tasks || [];
+
+          // Filter archived tasks
+          if (!showArchived) {
+            tasks = tasks.filter((t) => !t.archived);
+          }
 
           return (
             <View key={column._id || colIndex} style={styles.column}>
@@ -196,7 +220,6 @@ const BoardScreen = ({ route, navigation }) => {
 
         {columns.length === 0 ? (
           <View style={styles.emptyBoard}>
-            <Text style={styles.emptyIcon}>📋</Text>
             <Text style={styles.emptyTitle}>No Columns</Text>
             <Text style={styles.emptyText}>
               This board has no columns yet
@@ -330,7 +353,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   backText: {
-    fontSize: 22,
+    fontSize: 18,
     color: '#1e293b',
     fontWeight: '600',
   },
@@ -346,6 +369,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748b',
     marginTop: 2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  headerButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: '#f1f5f9',
+  },
+  headerButtonActive: {
+    backgroundColor: '#eef2ff',
+  },
+  headerButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+  },
+  headerButtonTextActive: {
+    color: '#6366f1',
   },
   columnsContainer: {
     paddingHorizontal: 12,
@@ -419,10 +463,6 @@ const styles = StyleSheet.create({
     width: 300,
     alignItems: 'center',
     paddingTop: 100,
-  },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: 12,
   },
   emptyTitle: {
     fontSize: 18,
